@@ -3,9 +3,12 @@ import { supabase } from '../lib/supabase'
 import { reporterTachesNonFaites } from '../utils/planificateur'
 
 export default function TachesDuJour() {
-  const [taches, setTaches] = useState([])
+  const [tachesParPiece, setTachesParPiece] = useState({})
+  const [piecesOuvertes, setPiecesOuvertes] = useState({})
   const [loading, setLoading] = useState(true)
   const [totalMinutes, setTotalMinutes] = useState(0)
+  const [totalFaites, setTotalFaites] = useState(0)
+  const [totalTaches, setTotalTaches] = useState(0)
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -20,10 +23,52 @@ export default function TachesDuJour() {
       .eq('date_prevue', aujourd_hui)
       .order('created_at')
 
-    setTaches(data || [])
-    const total = (data || []).reduce((sum, t) => sum + (t.menage_taches?.duree_minutes || 0), 0)
-    setTotalMinutes(total)
+    const taches = data || []
+
+    // Grouper par pièce, triées par : non faites d'abord, puis par zone
+    const groupes = {}
+    for (const t of taches) {
+      const piece = t.menage_taches?.piece || 'Autre'
+      if (!groupes[piece]) groupes[piece] = []
+      groupes[piece].push(t)
+    }
+
+    // Trier chaque groupe : non faites en premier, puis faites
+    for (const piece in groupes) {
+      groupes[piece].sort((a, b) => {
+        if (!!a.date_faite === !!b.date_faite) return 0
+        return a.date_faite ? 1 : -1
+      })
+    }
+
+    // Trier les pièces : celles avec des tâches non faites en premier
+    const piecesTriees = Object.keys(groupes).sort((a, b) => {
+      const aRestantes = groupes[a].filter(t => !t.date_faite).length
+      const bRestantes = groupes[b].filter(t => !t.date_faite).length
+      return bRestantes - aRestantes
+    })
+
+    const groupesOrdonnes = {}
+    for (const p of piecesTriees) groupesOrdonnes[p] = groupes[p]
+
+    setTachesParPiece(groupesOrdonnes)
+
+    // Tout fermé par défaut
+    const ouvertes = {}
+    for (const p of piecesTriees) ouvertes[p] = false
+    setPiecesOuvertes(ouvertes)
+
+    const total = taches.length
+    const faites = taches.filter(t => t.date_faite).length
+    const minutes = taches.reduce((sum, t) => sum + (t.menage_taches?.duree_minutes || 0), 0)
+    setTotalTaches(total)
+    setTotalFaites(faites)
+    setTotalMinutes(minutes)
     setLoading(false)
+  }
+
+  const togglePiece = (piece) => {
+    setPiecesOuvertes(prev => ({ ...prev, [piece]: !prev[piece] }))
   }
 
   const marquerFaite = async (id) => {
@@ -42,9 +87,7 @@ export default function TachesDuJour() {
     chargerTaches()
   }
 
-  const faites = taches.filter(t => t.date_faite)
-  const restantes = taches.filter(t => !t.date_faite)
-  const progression = taches.length > 0 ? Math.round((faites.length / taches.length) * 100) : 0
+  const progression = totalTaches > 0 ? Math.round((totalFaites / totalTaches) * 100) : 0
 
   if (loading) return <div className="loading">Chargement...</div>
 
@@ -59,15 +102,15 @@ export default function TachesDuJour() {
 
       <div className="stats-bar">
         <div className="stat-pill">
-          <span className="stat-number">{taches.length}</span>
+          <span className="stat-number">{totalTaches}</span>
           <span className="stat-label">tâches</span>
         </div>
         <div className="stat-pill">
           <span className="stat-number">{totalMinutes}</span>
-          <span className="stat-label">minutes</span>
+          <span className="stat-label">min</span>
         </div>
         <div className="stat-pill">
-          <span className="stat-number">{faites.length}</span>
+          <span className="stat-number">{totalFaites}</span>
           <span className="stat-label">faites</span>
         </div>
       </div>
@@ -77,52 +120,57 @@ export default function TachesDuJour() {
         <span className="progress-label">{progression}%</span>
       </div>
 
-      {taches.length === 0 ? (
+      {totalTaches === 0 ? (
         <div className="empty-state">
           <p>🎉 Rien à faire aujourd'hui !</p>
           <p>Profites-en pour te reposer.</p>
         </div>
       ) : (
-        <>
-          {restantes.length > 0 && (
-            <div className="taches-section">
-              <h3>À faire ({restantes.length})</h3>
-              {restantes.map(t => (
-                <div key={t.id} className={`tache-card ${t.reporte ? 'reporte' : ''}`}>
-                  <div className="tache-info">
-                    <span className="tache-piece">{t.menage_taches?.piece}</span>
-                    <span className="tache-zone">{t.menage_taches?.zone}</span>
-                    <span className="tache-nom">{t.menage_taches?.tache}</span>
-                    {t.reporte && <span className="badge-reporte">Reportée</span>}
-                  </div>
-                  <div className="tache-actions">
-                    <span className="duree">{t.menage_taches?.duree_minutes} min</span>
-                    <button className="btn-check" onClick={() => marquerFaite(t.id)}>✓</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="pieces-accordion">
+          {Object.entries(tachesParPiece).map(([piece, taches]) => {
+            const restantes = taches.filter(t => !t.date_faite).length
+            const ouvert = piecesOuvertes[piece]
 
-          {faites.length > 0 && (
-            <div className="taches-section done">
-              <h3>Terminées ({faites.length})</h3>
-              {faites.map(t => (
-                <div key={t.id} className="tache-card faite">
-                  <div className="tache-info">
-                    <span className="tache-piece">{t.menage_taches?.piece}</span>
-                    <span className="tache-zone">{t.menage_taches?.zone}</span>
-                    <span className="tache-nom">{t.menage_taches?.tache}</span>
+            return (
+              <div key={piece} className={`piece-section ${ouvert ? 'open' : ''}`}>
+                <button className="piece-header" onClick={() => togglePiece(piece)}>
+                  <div className="piece-header-left">
+                    <span className="piece-chevron">{ouvert ? '▾' : '▸'}</span>
+                    <span className="piece-header-nom">{piece}</span>
+                    {restantes > 0
+                      ? <span className="piece-badge">{restantes}</span>
+                      : <span className="piece-badge done">✓</span>
+                    }
                   </div>
-                  <div className="tache-actions">
-                    <span className="duree">{t.menage_taches?.duree_minutes} min</span>
-                    <button className="btn-uncheck" onClick={() => marquerNonFaite(t.id)}>↩</button>
+                  <span className="piece-header-meta">
+                    {taches.reduce((s, t) => s + (t.menage_taches?.duree_minutes || 0), 0)} min
+                  </span>
+                </button>
+
+                {ouvert && (
+                  <div className="piece-taches">
+                    {taches.map(t => (
+                      <div key={t.id} className={`tache-card ${t.date_faite ? 'faite' : ''} ${t.reporte ? 'reporte' : ''}`}>
+                        <div className="tache-info">
+                          <span className="tache-zone">{t.menage_taches?.zone}</span>
+                          <span className="tache-nom">{t.menage_taches?.tache}</span>
+                          {t.reporte && <span className="badge-reporte">Reportée</span>}
+                        </div>
+                        <div className="tache-actions">
+                          <span className="duree">{t.menage_taches?.duree_minutes} min</span>
+                          {t.date_faite
+                            ? <button className="btn-uncheck" onClick={() => marquerNonFaite(t.id)}>↩</button>
+                            : <button className="btn-check" onClick={() => marquerFaite(t.id)}>✓</button>
+                          }
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
     </div>
   )
