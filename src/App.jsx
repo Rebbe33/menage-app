@@ -2,6 +2,7 @@ import { useState } from 'react'
 import TachesDuJour from './components/TachesDuJour'
 import Stats from './components/Stats'
 import ImportXlsx from './components/ImportXlsx'
+import Taches from './pages/Taches'
 import './App.css'
 
 export default function App() {
@@ -12,33 +13,26 @@ export default function App() {
       <header className="app-header">
         <h1>🏠 Ménage</h1>
         <nav className="app-nav">
-          <button
-            className={`nav-btn ${page === 'today' ? 'active' : ''}`}
-            onClick={() => setPage('today')}
-          >
+          <button className={`nav-btn ${page === 'today' ? 'active' : ''}`} onClick={() => setPage('today')}>
             Aujourd'hui
           </button>
-          <button
-            className={`nav-btn ${page === 'stats' ? 'active' : ''}`}
-            onClick={() => setPage('stats')}
-          >
+          <button className={`nav-btn ${page === 'taches' ? 'active' : ''}`} onClick={() => setPage('taches')}>
+            Tâches
+          </button>
+          <button className={`nav-btn ${page === 'stats' ? 'active' : ''}`} onClick={() => setPage('stats')}>
             Stats
           </button>
-          <button
-            className={`nav-btn ${page === 'import' ? 'active' : ''}`}
-            onClick={() => setPage('import')}
-          >
+          <button className={`nav-btn ${page === 'import' ? 'active' : ''}`} onClick={() => setPage('import')}>
             Import
           </button>
         </nav>
       </header>
 
       <main className="app-main">
-        {page === 'today' && <TachesDuJour />}
-        {page === 'stats' && <Stats />}
-        {page === 'import' && (
-          <ImportXlsx onImportSuccess={() => setPage('today')} />
-        )}
+        {page === 'today'  && <TachesDuJour />}
+        {page === 'taches' && <Taches />}
+        {page === 'stats'  && <Stats />}
+        {page === 'import' && <ImportXlsx onImportSuccess={() => setPage('today')} />}
       </main>
     </div>
   )
