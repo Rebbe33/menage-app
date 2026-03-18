@@ -315,3 +315,61 @@ body {
   cursor: pointer; transition: all 0.2s;
 }
 .btn-danger:hover { background: var(--danger); color: white; }
+
+/* ── Édition inline tâche ── */
+.tache-edit-card {
+  background: var(--accent-light);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.btn-save {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.btn-save:hover { opacity: 0.9; }
+
+.btn-cancel {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-cancel:hover { border-color: var(--text-muted); color: var(--text); }
+
+.btn-edit {
+  width: 34px; height: 34px; border-radius: 50%;
+  border: 2px solid var(--border); background: transparent;
+  color: var(--text-muted); font-size: 1rem; cursor: pointer;
+  transition: all 0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.btn-edit:hover { border-color: var(--accent2); color: var(--accent2); }
