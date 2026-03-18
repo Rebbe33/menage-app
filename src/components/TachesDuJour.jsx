@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { reporterTachesNonFaites } from '../utils/planificateur'
 
@@ -9,14 +9,17 @@ export default function TachesDuJour() {
   const [totalMinutes, setTotalMinutes] = useState(0)
   const [totalFaites, setTotalFaites] = useState(0)
   const [totalTaches, setTotalTaches] = useState(0)
+  const piecesOuvertesRef = useRef({})
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
-    reporterTachesNonFaites().then(() => chargerTaches())
+    reporterTachesNonFaites().then(() => chargerTaches(true))
   }, [])
 
-  const chargerTaches = async () => {
-    setLoading(true)
+  const chargerTaches = async (init = false) => {
+    // On ne passe pas en "loading" complet pour éviter le flash
+    if (init) setLoading(true)
+
     const { data } = await supabase
       .from('menage_planning')
       .select('*, menage_taches(piece, zone, tache, duree_minutes)')
@@ -25,7 +28,6 @@ export default function TachesDuJour() {
 
     const taches = data || []
 
-    // Grouper par pièce, triées par : non faites d'abord, puis par zone
     const groupes = {}
     for (const t of taches) {
       const piece = t.menage_taches?.piece || 'Autre'
@@ -33,7 +35,6 @@ export default function TachesDuJour() {
       groupes[piece].push(t)
     }
 
-    // Trier chaque groupe : non faites en premier, puis faites
     for (const piece in groupes) {
       groupes[piece].sort((a, b) => {
         if (!!a.date_faite === !!b.date_faite) return 0
@@ -41,7 +42,6 @@ export default function TachesDuJour() {
       })
     }
 
-    // Trier les pièces : celles avec des tâches non faites en premier
     const piecesTriees = Object.keys(groupes).sort((a, b) => {
       const aRestantes = groupes[a].filter(t => !t.date_faite).length
       const bRestantes = groupes[b].filter(t => !t.date_faite).length
@@ -53,10 +53,16 @@ export default function TachesDuJour() {
 
     setTachesParPiece(groupesOrdonnes)
 
-    // Tout fermé par défaut
-    const ouvertes = {}
-    for (const p of piecesTriees) ouvertes[p] = false
-    setPiecesOuvertes(ouvertes)
+    if (init) {
+      // Premier chargement : tout fermé
+      const ouvertes = {}
+      for (const p of piecesTriees) ouvertes[p] = false
+      setPiecesOuvertes(ouvertes)
+      piecesOuvertesRef.current = ouvertes
+    } else {
+      // Rechargement après cochage : on restaure l'état des sections
+      setPiecesOuvertes({ ...piecesOuvertesRef.current })
+    }
 
     const total = taches.length
     const faites = taches.filter(t => t.date_faite).length
@@ -64,11 +70,13 @@ export default function TachesDuJour() {
     setTotalTaches(total)
     setTotalFaites(faites)
     setTotalMinutes(minutes)
-    setLoading(false)
+    if (init) setLoading(false)
   }
 
   const togglePiece = (piece) => {
-    setPiecesOuvertes(prev => ({ ...prev, [piece]: !prev[piece] }))
+    const nouvelEtat = { ...piecesOuvertesRef.current, [piece]: !piecesOuvertesRef.current[piece] }
+    piecesOuvertesRef.current = nouvelEtat
+    setPiecesOuvertes(nouvelEtat)
   }
 
   const marquerFaite = async (id) => {
@@ -76,7 +84,7 @@ export default function TachesDuJour() {
       .from('menage_planning')
       .update({ date_faite: new Date().toISOString() })
       .eq('id', id)
-    chargerTaches()
+    chargerTaches(false)
   }
 
   const marquerNonFaite = async (id) => {
@@ -84,7 +92,7 @@ export default function TachesDuJour() {
       .from('menage_planning')
       .update({ date_faite: null })
       .eq('id', id)
-    chargerTaches()
+    chargerTaches(false)
   }
 
   const progression = totalTaches > 0 ? Math.round((totalFaites / totalTaches) * 100) : 0
