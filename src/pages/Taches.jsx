@@ -10,6 +10,8 @@ export default function Taches() {
   const [showForm, setShowForm] = useState(false)
   const [filtreRecherche, setFiltreRecherche] = useState('')
   const [message, setMessage] = useState(null)
+  const [enEdition, setEnEdition] = useState(null) // id de la tâche en cours d'édition
+  const [formEdit, setFormEdit] = useState({ tache: '', frequence_jours: 7, duree_minutes: 10 })
   const [form, setForm] = useState({
     piece: '', zone: '', tache: '', frequence_jours: 7, duree_minutes: 10
   })
@@ -53,7 +55,6 @@ export default function Taches() {
       })
     )
 
-    // Grouper par pièce
     const groupes = {}
     for (const t of tachesAvecPlanning) {
       const piece = t.piece || 'Autre'
@@ -61,7 +62,6 @@ export default function Taches() {
       groupes[piece].push(t)
     }
 
-    // Trier chaque groupe par prochaine occurrence (la plus proche en premier)
     for (const piece in groupes) {
       groupes[piece].sort((a, b) => {
         const dateA = a.prochaine_occurrence?.date_prevue || '9999-99-99'
@@ -70,7 +70,6 @@ export default function Taches() {
       })
     }
 
-    // Trier les pièces A→Z
     const piecesTriees = Object.keys(groupes).sort()
     const groupesOrdonnes = {}
     for (const p of piecesTriees) groupesOrdonnes[p] = groupes[p]
@@ -78,10 +77,11 @@ export default function Taches() {
     setTachesParPiece(groupesOrdonnes)
     setPieces(piecesTriees)
 
-    // Tout fermé par défaut
-    const ouvertes = {}
-    for (const p of piecesTriees) ouvertes[p] = false
-    setPiecesOuvertes(ouvertes)
+    setPiecesOuvertes(prev => {
+      const nouvel = {}
+      for (const p of piecesTriees) nouvel[p] = prev[p] ?? false
+      return nouvel
+    })
 
     setLoading(false)
   }
@@ -90,6 +90,43 @@ export default function Taches() {
     setPiecesOuvertes(prev => ({ ...prev, [piece]: !prev[piece] }))
   }
 
+  // ── Édition inline ──
+  const ouvrirEdition = (tache) => {
+    setEnEdition(tache.id)
+    setFormEdit({
+      tache: tache.tache,
+      frequence_jours: tache.frequence_jours,
+      duree_minutes: tache.duree_minutes
+    })
+  }
+
+  const annulerEdition = () => setEnEdition(null)
+
+  const sauvegarderEdition = async (tache) => {
+    const { error } = await supabase
+      .from('menage_taches')
+      .update({
+        tache: formEdit.tache,
+        frequence_jours: formEdit.frequence_jours,
+        duree_minutes: formEdit.duree_minutes
+      })
+      .eq('id', tache.id)
+
+    if (error) { setMessage({ type: 'error', text: error.message }); return }
+
+    // Si la fréquence a changé, on régénère le planning
+    if (formEdit.frequence_jours !== tache.frequence_jours) {
+      await supabase.from('menage_planning').delete().eq('tache_id', tache.id).is('date_faite', null)
+      await genererPlanning(365)
+    }
+
+    setMessage({ type: 'success', text: `✅ Tâche modifiée.` })
+    setTimeout(() => setMessage(null), 2500)
+    setEnEdition(null)
+    chargerTaches()
+  }
+
+  // ── Cochage ──
   const cocherTache = async (tache) => {
     if (!tache.prochaine_occurrence) return
     await decalerProchaineOccurrence(
@@ -102,6 +139,7 @@ export default function Taches() {
     chargerTaches()
   }
 
+  // ── Suppression ──
   const supprimerTache = async (id) => {
     if (!confirm('Supprimer cette tâche et toutes ses occurrences planifiées ?')) return
     await supabase.from('menage_taches').update({ actif: false }).eq('id', id)
@@ -109,6 +147,7 @@ export default function Taches() {
     chargerTaches()
   }
 
+  // ── Ajout ──
   const ajouterTache = async () => {
     if (!form.piece || !form.zone || !form.tache) {
       setMessage({ type: 'error', text: 'Merci de remplir tous les champs.' })
@@ -141,7 +180,6 @@ export default function Taches() {
     return `${jours}j`
   }
 
-  // Filtrer les tâches par recherche
   const tachesParPieceFiltrees = {}
   for (const [piece, taches] of Object.entries(tachesParPiece)) {
     const filtrees = taches.filter(t =>
@@ -240,29 +278,69 @@ export default function Taches() {
               {ouvert && (
                 <div className="piece-taches">
                   {taches.map(t => (
-                    <div key={t.id} className="tache-full-card">
-                      <div className="tache-full-info">
-                        <div className="tache-full-top">
-                          <span className="tache-zone">{t.zone}</span>
+                    <div key={t.id}>
+                      {/* Mode édition */}
+                      {enEdition === t.id ? (
+                        <div className="tache-edit-card">
+                          <div className="form-group full">
+                            <label>Nom</label>
+                            <input type="text" value={formEdit.tache}
+                              onChange={e => setFormEdit({ ...formEdit, tache: e.target.value })} />
+                          </div>
+                          <div className="edit-row">
+                            <div className="form-group">
+                              <label>Fréquence</label>
+                              <select value={formEdit.frequence_jours}
+                                onChange={e => setFormEdit({ ...formEdit, frequence_jours: parseInt(e.target.value) })}>
+                                <option value={1}>Quotidien</option>
+                                <option value={7}>Hebdomadaire</option>
+                                <option value={14}>Bi-mensuel</option>
+                                <option value={30}>Mensuel</option>
+                                <option value={90}>Trimestriel</option>
+                                <option value={180}>Semestriel</option>
+                                <option value={365}>Annuel</option>
+                              </select>
+                            </div>
+                            <div className="form-group">
+                              <label>Durée (min)</label>
+                              <input type="number" min={1} max={120} value={formEdit.duree_minutes}
+                                onChange={e => setFormEdit({ ...formEdit, duree_minutes: parseInt(e.target.value) })} />
+                            </div>
+                          </div>
+                          <div className="edit-actions">
+                            <button className="btn-save" onClick={() => sauvegarderEdition(t)}>✓ Sauvegarder</button>
+                            <button className="btn-cancel" onClick={annulerEdition}>Annuler</button>
+                          </div>
                         </div>
-                        <span className="tache-nom">{t.tache}</span>
-                        <div className="tache-full-meta">
-                          <span className="meta-tag">{frequenceLabel(t.frequence_jours)}</span>
-                          <span className="meta-tag">{t.duree_minutes} min</span>
-                          {t.derniere_fois && (
-                            <span className="meta-tag muted">Fait le {formatDate(t.derniere_fois)}</span>
-                          )}
-                          {t.prochaine_occurrence && (
-                            <span className="meta-tag accent">Prévu le {formatDate(t.prochaine_occurrence.date_prevue)}</span>
-                          )}
+                      ) : (
+                        /* Mode normal */
+                        <div className="tache-full-card">
+                          <div className="tache-full-info">
+                            <div className="tache-full-top">
+                              <span className="tache-zone">{t.zone}</span>
+                            </div>
+                            <span className="tache-nom">{t.tache}</span>
+                            <div className="tache-full-meta">
+                              <span className="meta-tag">{frequenceLabel(t.frequence_jours)}</span>
+                              <span className="meta-tag">{t.duree_minutes} min</span>
+                              {t.derniere_fois && (
+                                <span className="meta-tag muted">Fait le {formatDate(t.derniere_fois)}</span>
+                              )}
+                              {t.prochaine_occurrence && (
+                                <span className="meta-tag accent">Prévu le {formatDate(t.prochaine_occurrence.date_prevue)}</span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="tache-full-actions">
+                            <button className="btn-check" title="Marquer comme faite"
+                              onClick={() => cocherTache(t)} disabled={!t.prochaine_occurrence}>✓</button>
+                            <button className="btn-edit" title="Modifier"
+                              onClick={() => ouvrirEdition(t)}>✎</button>
+                            <button className="btn-delete" title="Supprimer"
+                              onClick={() => supprimerTache(t.id)}>🗑</button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="tache-full-actions">
-                        <button className="btn-check" title="Marquer comme faite"
-                          onClick={() => cocherTache(t)} disabled={!t.prochaine_occurrence}>✓</button>
-                        <button className="btn-delete" title="Supprimer"
-                          onClick={() => supprimerTache(t.id)}>🗑</button>
-                      </div>
+                      )}
                     </div>
                   ))}
                 </div>
