@@ -373,3 +373,10 @@ body {
   transition: all 0.2s; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .btn-edit:hover { border-color: var(--accent2); color: var(--accent2); }
+
+/* ── Stat pill mis en avant ── */
+.stat-pill.highlight {
+  background: var(--accent-light);
+  border-color: var(--accent);
+}
+.stat-pill.highlight .stat-number { color: var(--accent); }
