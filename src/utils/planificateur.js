@@ -2,8 +2,6 @@ import { supabase } from '../lib/supabase'
 
 /**
  * Génère le planning sur N jours avec répartition ÉQUITABLE.
- * Chaque tâche est planifiée selon sa fréquence, répartie uniformément
- * avec un offset aléatoire pour éviter que tout tombe le même jour.
  */
 export async function genererPlanning(nbJours = 365) {
   const { data: configs } = await supabase
@@ -24,14 +22,12 @@ export async function genererPlanning(nbJours = 365) {
 
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
-  // Supprimer toutes les occurrences futures non faites
   await supabase
     .from('menage_planning')
     .delete()
     .gte('date_prevue', aujourd_hui)
     .is('date_faite', null)
 
-  // Répartition équitable : offset aléatoire par tâche
   const insertions = []
   for (const tache of taches) {
     const freq = tache.frequence_jours
@@ -62,8 +58,7 @@ export async function genererPlanning(nbJours = 365) {
 
 /**
  * Reporte les tâches non faites d'hier vers aujourd'hui.
- * Evite les doublons : si une occurrence existe déjà aujourd'hui
- * pour cette tâche, on supprime simplement l'ancienne au lieu de reporter.
+ * Si une occurrence existe déjà aujourd'hui pour cette tâche, supprime l'ancienne.
  */
 export async function reporterTachesNonFaites() {
   const hier = new Date()
@@ -71,7 +66,6 @@ export async function reporterTachesNonFaites() {
   const hierStr = hier.toISOString().split('T')[0]
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
-  // Tâches non faites d'hier
   const { data: nonFaites } = await supabase
     .from('menage_planning')
     .select('id, tache_id')
@@ -80,7 +74,6 @@ export async function reporterTachesNonFaites() {
 
   if (!nonFaites || nonFaites.length === 0) return
 
-  // Tâches déjà planifiées aujourd'hui (non faites)
   const { data: dejaPlanifiees } = await supabase
     .from('menage_planning')
     .select('tache_id')
@@ -91,10 +84,10 @@ export async function reporterTachesNonFaites() {
 
   for (const tache of nonFaites) {
     if (tachesDejaAujourdhui.has(tache.tache_id)) {
-      // Il y a déjà une occurrence aujourd'hui → on supprime juste l'ancienne
+      // Déjà présente aujourd'hui → supprimer l'ancienne
       await supabase.from('menage_planning').delete().eq('id', tache.id)
     } else {
-      // Pas d'occurrence aujourd'hui → on reporte
+      // Pas encore présente → reporter
       await supabase
         .from('menage_planning')
         .update({ date_prevue: aujourd_hui, reporte: true })
@@ -104,9 +97,8 @@ export async function reporterTachesNonFaites() {
 }
 
 /**
- * Nettoie les doublons pour une date donnée :
- * garde uniquement la première occurrence par tâche (non faite),
- * supprime les autres.
+ * Nettoie les doublons pour une date donnée.
+ * Garde uniquement la première occurrence par tâche (non faite).
  */
 export async function nettoyerDoublons(date) {
   const { data: occurrences } = await supabase
@@ -135,31 +127,39 @@ export async function nettoyerDoublons(date) {
 }
 
 /**
- * Coche une tâche manuellement et décale sa prochaine occurrence.
+ * Coche une tâche (depuis la page du jour ou la liste complète).
+ *
+ * Logique propre :
+ * 1. Marque l'occurrence cochée comme faite
+ * 2. Supprime TOUTES les occurrences futures non faites de cette tâche
+ * 3. Crée UNE SEULE nouvelle occurrence à aujourd'hui + fréquence
+ *
+ * Cela évite tout doublon peu importe le retard de cochage.
  */
 export async function decalerProchaineOccurrence(planningId, tacheId, frequenceJours) {
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
+  // 1. Marquer comme faite
   await supabase
     .from('menage_planning')
     .update({ date_faite: new Date().toISOString() })
     .eq('id', planningId)
 
-  const { data: prochaines } = await supabase
+  // 2. Supprimer toutes les futures occurrences non faites de cette tâche
+  await supabase
     .from('menage_planning')
-    .select('id')
+    .delete()
     .eq('tache_id', tacheId)
     .gt('date_prevue', aujourd_hui)
     .is('date_faite', null)
-    .order('date_prevue', { ascending: true })
-    .limit(1)
 
-  if (prochaines && prochaines.length > 0) {
-    const nouvelleDate = new Date()
-    nouvelleDate.setDate(nouvelleDate.getDate() + frequenceJours)
-    await supabase
-      .from('menage_planning')
-      .update({ date_prevue: nouvelleDate.toISOString().split('T')[0] })
-      .eq('id', prochaines[0].id)
-  }
+  // 3. Créer une seule prochaine occurrence propre
+  const prochaineDate = new Date()
+  prochaineDate.setDate(prochaineDate.getDate() + frequenceJours)
+
+  await supabase.from('menage_planning').insert({
+    tache_id: tacheId,
+    date_prevue: prochaineDate.toISOString().split('T')[0],
+    reporte: false
+  })
 }
