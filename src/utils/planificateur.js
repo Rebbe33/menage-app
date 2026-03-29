@@ -23,19 +23,19 @@ export async function genererPlanning(nbJours = 365) {
   }
 
   const aujourd_hui = new Date().toISOString().split('T')[0]
+
+  // Supprimer toutes les occurrences futures non faites
   await supabase
     .from('menage_planning')
     .delete()
     .gte('date_prevue', aujourd_hui)
     .is('date_faite', null)
 
-  // Répartition équitable : offset aléatoire par tâche pour disperser
+  // Répartition équitable : offset aléatoire par tâche
   const insertions = []
-
   for (const tache of taches) {
     const freq = tache.frequence_jours
     const offset = Math.floor(Math.random() * freq)
-
     for (let j = offset; j < nbJours; j += freq) {
       const date = new Date(debut)
       date.setDate(debut.getDate() + j)
@@ -62,6 +62,8 @@ export async function genererPlanning(nbJours = 365) {
 
 /**
  * Reporte les tâches non faites d'hier vers aujourd'hui.
+ * Evite les doublons : si une occurrence existe déjà aujourd'hui
+ * pour cette tâche, on supprime simplement l'ancienne au lieu de reporter.
  */
 export async function reporterTachesNonFaites() {
   const hier = new Date()
@@ -69,19 +71,66 @@ export async function reporterTachesNonFaites() {
   const hierStr = hier.toISOString().split('T')[0]
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
+  // Tâches non faites d'hier
   const { data: nonFaites } = await supabase
     .from('menage_planning')
-    .select('id')
+    .select('id, tache_id')
     .eq('date_prevue', hierStr)
     .is('date_faite', null)
 
   if (!nonFaites || nonFaites.length === 0) return
 
+  // Tâches déjà planifiées aujourd'hui (non faites)
+  const { data: dejaPlanifiees } = await supabase
+    .from('menage_planning')
+    .select('tache_id')
+    .eq('date_prevue', aujourd_hui)
+    .is('date_faite', null)
+
+  const tachesDejaAujourdhui = new Set((dejaPlanifiees || []).map(t => t.tache_id))
+
   for (const tache of nonFaites) {
-    await supabase
-      .from('menage_planning')
-      .update({ date_prevue: aujourd_hui, reporte: true })
-      .eq('id', tache.id)
+    if (tachesDejaAujourdhui.has(tache.tache_id)) {
+      // Il y a déjà une occurrence aujourd'hui → on supprime juste l'ancienne
+      await supabase.from('menage_planning').delete().eq('id', tache.id)
+    } else {
+      // Pas d'occurrence aujourd'hui → on reporte
+      await supabase
+        .from('menage_planning')
+        .update({ date_prevue: aujourd_hui, reporte: true })
+        .eq('id', tache.id)
+    }
+  }
+}
+
+/**
+ * Nettoie les doublons pour une date donnée :
+ * garde uniquement la première occurrence par tâche (non faite),
+ * supprime les autres.
+ */
+export async function nettoyerDoublons(date) {
+  const { data: occurrences } = await supabase
+    .from('menage_planning')
+    .select('id, tache_id, created_at')
+    .eq('date_prevue', date)
+    .is('date_faite', null)
+    .order('created_at', { ascending: true })
+
+  if (!occurrences || occurrences.length === 0) return
+
+  const vues = new Set()
+  const aSupprimer = []
+
+  for (const occ of occurrences) {
+    if (vues.has(occ.tache_id)) {
+      aSupprimer.push(occ.id)
+    } else {
+      vues.add(occ.tache_id)
+    }
+  }
+
+  if (aSupprimer.length > 0) {
+    await supabase.from('menage_planning').delete().in('id', aSupprimer)
   }
 }
 
