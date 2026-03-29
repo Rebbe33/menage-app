@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { reporterTachesNonFaites } from '../utils/planificateur'
+import { reporterTachesNonFaites, nettoyerDoublons } from '../utils/planificateur'
 
 export default function TachesDuJour() {
   const [tachesParPiece, setTachesParPiece] = useState({})
@@ -14,7 +14,12 @@ export default function TachesDuJour() {
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
-    reporterTachesNonFaites().then(() => chargerTaches(true))
+    const init = async () => {
+      await reporterTachesNonFaites()
+      await nettoyerDoublons(aujourd_hui)
+      chargerTaches(true)
+    }
+    init()
   }, [])
 
   const chargerTaches = async (init = false) => {
