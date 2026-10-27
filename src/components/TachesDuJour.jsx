@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { reporterTachesNonFaites, nettoyerDoublons } from '../utils/planificateur'
 
-export default function TachesDuJour() {
+export default function TachesDuJour({ enPause }) {
   const [tachesParPiece, setTachesParPiece] = useState({})
   const [piecesOuvertes, setPiecesOuvertes] = useState({})
   const [loading, setLoading] = useState(true)
@@ -11,12 +11,15 @@ export default function TachesDuJour() {
   const [totalFaites, setTotalFaites] = useState(0)
   const [totalTaches, setTotalTaches] = useState(0)
   const piecesOuvertesRef = useRef({})
-  const piecesOrdreRef = useRef([]) // ordre fixé au premier chargement
+  const piecesOrdreRef = useRef([])
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
     const init = async () => {
-      await reporterTachesNonFaites()
+      // Ne pas reporter les tâches si l'app est en pause
+      if (!enPause) {
+        await reporterTachesNonFaites()
+      }
       await nettoyerDoublons(aujourd_hui)
       chargerTaches(true)
     }
@@ -48,12 +51,10 @@ export default function TachesDuJour() {
       })
     }
 
-    // Au premier chargement : fixer l'ordre alphabétique une fois pour toutes
     if (init) {
       piecesOrdreRef.current = Object.keys(groupes).sort((a, b) => a.localeCompare(b, 'fr'))
     }
 
-    // Utiliser l'ordre fixé (+ ajouter les éventuelles nouvelles pièces à la fin)
     const piecesConnues = new Set(piecesOrdreRef.current)
     const nouvellesPieces = Object.keys(groupes).filter(p => !piecesConnues.has(p)).sort((a, b) => a.localeCompare(b, 'fr'))
     const ordreComplet = [...piecesOrdreRef.current, ...nouvellesPieces]
@@ -145,8 +146,10 @@ export default function TachesDuJour() {
 
       {totalTaches === 0 ? (
         <div className="empty-state">
-          <p>🎉 Rien à faire aujourd'hui !</p>
-          <p>Profites-en pour te reposer.</p>
+          {enPause
+            ? <><p>⏸ App en pause</p><p>À ton retour, reprends depuis le header !</p></>
+            : <><p>🎉 Rien à faire aujourd'hui !</p><p>Profites-en pour te reposer.</p></>
+          }
         </div>
       ) : progression === 100 ? (
         <div className="empty-state">
