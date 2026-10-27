@@ -11,6 +11,7 @@ export default function TachesDuJour() {
   const [totalFaites, setTotalFaites] = useState(0)
   const [totalTaches, setTotalTaches] = useState(0)
   const piecesOuvertesRef = useRef({})
+  const piecesOrdreRef = useRef([]) // ordre fixé au premier chargement
   const aujourd_hui = new Date().toISOString().split('T')[0]
 
   useEffect(() => {
@@ -47,20 +48,26 @@ export default function TachesDuJour() {
       })
     }
 
-    const piecesTriees = Object.keys(groupes).sort((a, b) => {
-      const aRestantes = groupes[a].filter(t => !t.date_faite).length
-      const bRestantes = groupes[b].filter(t => !t.date_faite).length
-      return bRestantes - aRestantes
-    })
+    // Au premier chargement : fixer l'ordre alphabétique une fois pour toutes
+    if (init) {
+      piecesOrdreRef.current = Object.keys(groupes).sort((a, b) => a.localeCompare(b, 'fr'))
+    }
+
+    // Utiliser l'ordre fixé (+ ajouter les éventuelles nouvelles pièces à la fin)
+    const piecesConnues = new Set(piecesOrdreRef.current)
+    const nouvellesPieces = Object.keys(groupes).filter(p => !piecesConnues.has(p)).sort((a, b) => a.localeCompare(b, 'fr'))
+    const ordreComplet = [...piecesOrdreRef.current, ...nouvellesPieces]
 
     const groupesOrdonnes = {}
-    for (const p of piecesTriees) groupesOrdonnes[p] = groupes[p]
+    for (const p of ordreComplet) {
+      if (groupes[p]) groupesOrdonnes[p] = groupes[p]
+    }
 
     setTachesParPiece(groupesOrdonnes)
 
     if (init) {
       const ouvertes = {}
-      for (const p of piecesTriees) ouvertes[p] = false
+      for (const p of ordreComplet) ouvertes[p] = false
       setPiecesOuvertes(ouvertes)
       piecesOuvertesRef.current = ouvertes
     } else {
