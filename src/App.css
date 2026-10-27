@@ -380,3 +380,66 @@ body {
   border-color: var(--accent);
 }
 .stat-pill.highlight .stat-number { color: var(--accent); }
+
+/* ── Header top (titre + bouton pause) ── */
+.app-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.app-header-top h1 { margin-bottom: 0; }
+
+.btn-pause {
+  padding: 7px 14px;
+  border-radius: 30px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-pause:hover {
+  border-color: var(--accent2);
+  color: var(--accent2);
+}
+.btn-pause.active {
+  background: #fff3e0;
+  border-color: #e65100;
+  color: #e65100;
+}
+.btn-pause.active:hover {
+  background: #e65100;
+  color: white;
+}
+
+/* ── Bandeau pause ── */
+.bandeau-pause {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fff3e0;
+  border-bottom: 2px solid #e65100;
+  padding: 14px 20px;
+  color: #e65100;
+  font-size: 0.88rem;
+}
+.bandeau-pause span {
+  font-size: 1.3rem;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.bandeau-pause strong {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+.bandeau-pause p {
+  color: #bf360c;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
