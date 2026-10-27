@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a90d9;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a3a6b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0.15" />
+      <stop offset="100%" style="stop-color:#ffffff;stop-opacity:0" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fond arrondi -->
+  <rect width="512" height="512" rx="110" ry="110" fill="url(#bg)" />
+  <rect width="512" height="512" rx="110" ry="110" fill="url(#shine)" />
+
+  <!-- Maison (contour blanc épais) -->
+  <g fill="none" stroke="#ffffff" stroke-width="22" stroke-linejoin="round" stroke-linecap="round">
+    <!-- Toit -->
+    <polyline points="130,240 256,130 382,240" />
+    <!-- Murs -->
+    <polyline points="170,220 170,370 342,370 342,220" />
+    <!-- Porte -->
+    <rect x="220" y="285" width="72" height="85" rx="8" stroke-width="18" />
+  </g>
+</svg>
