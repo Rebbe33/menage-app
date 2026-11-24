@@ -1,9 +1,15 @@
 import { supabase } from '../lib/supabase'
 
 /**
- * Génère le planning sur N jours avec répartition ÉQUITABLE.
- * Pour chaque tâche, crée toutes ses occurrences depuis `debut`
- * jusqu'à `debut + nbJours`, espacées de `frequence_jours`.
+ * Génère le planning sur N jours avec LISSAGE DE CHARGE.
+ *
+ * Pour chaque tâche, au lieu d'un offset purement aléatoire,
+ * on choisit le jour le moins chargé (en minutes) parmi les
+ * jours disponibles dans la première fenêtre de fréquence.
+ * Toutes les occurrences suivantes s'enchaînent à fréquence fixe.
+ *
+ * Résultat : la charge journalière (en minutes) est équilibrée
+ * sur toute l'année, pas seulement aléatoirement répartie.
  */
 export async function genererPlanning(nbJours = 365) {
   const { data: configs } = await supabase
@@ -31,23 +37,56 @@ export async function genererPlanning(nbJours = 365) {
     .gte('date_prevue', aujourd_hui)
     .is('date_faite', null)
 
-  // Construire toutes les occurrences
+  // Tableau de charge par jour (index = nb de jours depuis debut)
+  const chargeParJour = new Array(nbJours).fill(0)
+
+  // Fonction utilitaire : index du jour dans le tableau
+  const indexJour = (dateStr) => {
+    const d = new Date(dateStr)
+    const diff = Math.round((d - debut) / 86400000)
+    return diff
+  }
+
+  // Trier les tâches par durée décroissante pour placer les plus longues en premier
+  // (les tâches longues ont moins de flexibilité de placement)
+  const tachesTriees = [...taches].sort((a, b) => (b.duree_minutes || 0) - (a.duree_minutes || 0))
+
   const insertions = []
-  for (const tache of taches) {
+
+  for (const tache of tachesTriees) {
     const freq = tache.frequence_jours
-    // Offset aléatoire pour répartir équitablement
-    const offset = Math.floor(Math.random() * freq)
-    for (let j = offset; j < nbJours; j += freq) {
+    const duree = tache.duree_minutes || 0
+
+    // Trouver le jour le moins chargé dans la première fenêtre [0, freq[
+    // pour déterminer l'offset de départ
+    let offsetOptimal = 0
+    let chargeMin = Infinity
+
+    for (let j = 0; j < freq && j < nbJours; j++) {
+      const dateCandidate = new Date(debut)
+      dateCandidate.setDate(debut.getDate() + j)
+      const dateStr = dateCandidate.toISOString().split('T')[0]
+      // Ne considérer que les jours >= aujourd'hui
+      if (dateStr >= aujourd_hui && chargeParJour[j] < chargeMin) {
+        chargeMin = chargeParJour[j]
+        offsetOptimal = j
+      }
+    }
+
+    // Générer toutes les occurrences à partir de l'offset optimal
+    for (let j = offsetOptimal; j < nbJours; j += freq) {
       const date = new Date(debut)
       date.setDate(debut.getDate() + j)
       const dateStr = date.toISOString().split('T')[0]
-      // Ne pas insérer dans le passé
+
       if (dateStr >= aujourd_hui) {
         insertions.push({
           tache_id: tache.id,
           date_prevue: dateStr,
           reporte: false
         })
+        // Mettre à jour la charge de ce jour
+        if (j < nbJours) chargeParJour[j] += duree
       }
     }
   }
@@ -177,13 +216,6 @@ export async function nettoyerDoublons(date) {
 
 /**
  * Coche une tâche et replanifie TOUTES ses occurrences futures à partir d'aujourd'hui.
- *
- * Logique :
- * 1. Marque l'occurrence comme faite
- * 2. Supprime toutes les occurrences futures non faites de cette tâche
- * 3. Recrée toutes les occurrences futures espacées de `frequenceJours`
- *    → garantit qu'une tâche quotidienne reste quotidienne,
- *      qu'une tâche hebdo reste hebdo, etc.
  */
 export async function decalerProchaineOccurrence(planningId, tacheId, frequenceJours) {
   const aujourd_hui = new Date().toISOString().split('T')[0]
